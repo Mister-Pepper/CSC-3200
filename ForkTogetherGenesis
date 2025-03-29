@@ -1,0 +1,74 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+
+
+#define MAX_BUF_SIZE 1024
+
+void merge_file(int part_num) 
+{
+    char input_file_name[256];
+    snprintf(input_file_name, sizeof(input_file_name), "genesis_part%d.txt", part_num);
+
+    // create file/ open if exisitng
+    FILE* inFile = fopen(input_file_name, "rb");
+    if (!inFile) 
+    {
+        perror("Error opening input file for merging");
+        exit(1);
+    }
+
+    // open output file
+    FILE* outFile = fopen("genesis_merged.txt", "ab");
+    if (!outFile) 
+    {
+        perror("Error opening output file for merging");
+        fclose(inFile);
+        exit(1);
+    }
+
+    //buffer to read from input file and write to output file
+    char buffer[MAX_BUF_SIZE];
+    size_t bytes_read;
+    while ((bytes_read = fread(buffer, 1, sizeof(buffer), inFile)) > 0) 
+    {
+        fwrite(buffer, 1, bytes_read, outFile);
+    }
+
+    // free up them resources
+    fclose(inFile);
+    fclose(outFile);
+}
+
+int main() 
+{
+    // 4 chunks
+    int n = 4;
+
+    // create child processes to handle the merging
+    for (int i = 0; i < n; i++) 
+    {
+        pid_t pid = fork();
+        if (pid == 0) 
+        {  
+            // Child process
+            merge_file(i + 1);
+            exit(0);  // xxit the child process after merging 
+        } 
+        else if (pid < 0) 
+        {
+            perror("Fork failed");
+            return 1;
+        }
+    }
+
+    // wait for child process to finish up
+    for (int i = 0; i < n; i++) 
+    {
+        wait(NULL);  //wait for all 
+    }
+
+    printf("Merging completed. Put together to form genesis_merged.txt.\n");
+    return 0;
+}
