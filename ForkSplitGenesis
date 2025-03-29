@@ -1,0 +1,90 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+
+#define MAX_BUF_SIZE 1024
+
+void split_file(int part_num, int num_parts, FILE* inFile, long file_size) 
+{
+    // get bytze size of chunk
+    long part_size = file_size / num_parts;
+    long start_offset = part_size * (part_num - 1);
+    long end_offset = (part_num == num_parts) ? file_size : part_size * part_num;
+
+    // put cursor to sart of file
+    fseek(inFile, start_offset, SEEK_SET);
+
+    // create output file
+    char output_file_name[256];
+    snprintf(output_file_name, sizeof(output_file_name), "genesis_part%d.txt", part_num);
+    FILE* outFile = fopen(output_file_name, "wb");
+    if (!outFile) 
+    {
+        perror("Error opening output file");
+        exit(1);
+    }
+
+    // Buffer to read chunks of the file
+    char buffer[MAX_BUF_SIZE];
+    long bytes_to_read = end_offset - start_offset;
+
+    while (bytes_to_read > 0) 
+    {
+        size_t bytes_read = fread(buffer, 1, sizeof(buffer), inFile);
+        if (bytes_read > bytes_to_read) 
+        {
+            bytes_read = bytes_to_read;  // catch the remaining bytes
+        }
+
+        fwrite(buffer, 1, bytes_read, outFile);
+        bytes_to_read -= bytes_read;
+    }
+
+    fclose(outFile);
+}
+
+int main() 
+{
+    // set up in file
+    FILE* inFile = fopen("genesis.txt", "rb");
+    if (!inFile) {
+        perror("Error opening input file");
+        return 1;
+    }
+
+    // get size of in file
+    fseek(inFile, 0, SEEK_END);
+    long file_size = ftell(inFile);
+    fseek(inFile, 0, SEEK_SET);
+
+    int n = 4;
+
+    // create child processes to handle the splitting
+    for (int i = 0; i < n; i++) 
+    {
+        pid_t pid = fork();
+        if (pid == 0) 
+        {  
+            split_file(i + 1, n, inFile, file_size);
+            fclose(inFile);
+            exit(0);
+        } 
+        //just in case it fails for whetever reasom return from porgram
+        else if (pid < 0) 
+        {
+            perror("Fork failed");
+            fclose(inFile);
+            return 1;
+        }
+    }
+
+    for (int i = 0; i < n; i++) 
+    {
+        wait(NULL);  // Wait for all child processes to complete
+    }
+
+    // make sure to free up resources we used for this
+    fclose(inFile);
+    return 0;
+}
