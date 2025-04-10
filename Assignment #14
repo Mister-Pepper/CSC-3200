@@ -1,0 +1,95 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+// struct to pass the range of numbers to each thread
+struct ThreadData
+{
+    int start;
+    int end;
+    int thread_id;
+};
+
+// function to pass to ouput vals to console for thread
+void* count_function(void* arg) 
+{
+    struct ThreadData* data = (struct ThreadData*)arg;
+    printf("t_%d: ", data->thread_id);
+    
+    for (int i = data->start; i <= data->end; i++) {
+        printf("%d ", i);
+    }
+    printf("\n");
+    
+    return NULL;
+}
+
+int main() {
+    int count_to_number;
+    int num_of_threads;
+    
+    // Get input from the user
+    printf("Please enter a number from 2-1000: ");
+    scanf("%d", &count_to_number);
+
+    // lots of input validation stuff just to make my life easier
+    while(count_to_number < 2 || count_to_number > 1000) 
+    {
+        printf("-- ERROR -- \n Enter a valid number between 2-1000: ");
+        scanf("%d", &count_to_number);
+    }
+
+    printf("\nPlease enter the amount of threads you wish to have work on this problem (1-10): ");
+    scanf("%d", &num_of_threads);
+
+    while(num_of_threads > count_to_number || num_of_threads < 1 || num_of_threads > 10) 
+    {
+        printf("Error! Choose a number of threads from 1-10 and make sure it is not greater than the number being counted. Try again: ");
+        scanf("%d", &num_of_threads);
+    
+    }
+
+    // creating an array for the thread IDS
+    pthread_t* threads = malloc(num_of_threads * sizeof(pthread_t));
+    
+    // find out how much work tot divy up
+    int work_per_thread = count_to_number / num_of_threads;
+    int remaining_work = count_to_number % num_of_threads;
+
+    // figure out work for thereads and then create and assign said work
+    for (int i = 0; i < num_of_threads; i++) 
+    {
+
+        // each thread will handle 'work_per_thread' numbers
+        int start = i * work_per_thread + 1;
+        int end = (i + 1) * work_per_thread;
+        
+        // deal with loose ends
+        if (i < remaining_work) 
+        {
+            end++;
+        }
+        
+        // allocate memory for data and pass it to the thread function
+        struct ThreadData* data = malloc(sizeof(struct ThreadData));
+        data->start = start;
+        data->end = end;
+        data->thread_id = i + 1;
+
+        // ACTUALLY CREATING THREAD HERE and passing all parameters i worked up
+        pthread_create(&threads[i], NULL, count_function, (void*)data);
+    }
+
+    // gotta wait
+    for (int i = 0; i < num_of_threads; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    // best practice to clear up memory
+    free(threads);  
+
+    // we doeneeeeee
+    printf("All threads have finished counting.\n");
+
+    return 0;
+}
