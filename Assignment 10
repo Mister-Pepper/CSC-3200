@@ -1,0 +1,205 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+// function to rotate picture 90 degrees clockwise
+unsigned char *rotate90(unsigned char *originalPixels, int *originalWidth, int *originalHeight, int *originalRowSize) 
+{
+    int widthOld = *originalWidth;
+    int heightOld = *originalHeight;
+
+    // width and height flip when rotating 90 degrees
+    int widthNew = heightOld;
+    int heightNew = widthOld;
+
+    int rowSizeNew = (widthNew * 3 + 3) & ~3;
+
+    // allocate memory for rotated image (all 0s)
+    unsigned char *rotatedPixels = calloc(1, rowSizeNew * heightNew);
+
+    for (int y = 0; y < heightOld; y++) 
+    {
+        for (int x = 0; x < widthOld; x++) 
+        {
+            int sourceIndex = y * (*originalRowSize) + x * 3;
+
+            // for 90-degree rotation:
+            int newX = heightOld - y - 1;
+            int newY = x;
+            int destinationIndex = newY * rowSizeNew + newX * 3;
+
+            // copy the RGB triplet to the new spot
+            memcpy(&rotatedPixels[destinationIndex], &originalPixels[sourceIndex], 3);
+        }
+    }
+
+    // best practice to free resources up now that i am done with it
+    free(originalPixels);
+
+    // update with new values 
+    *originalWidth = widthNew;
+    *originalHeight = heightNew;
+    *originalRowSize = rowSizeNew;
+
+    return rotatedPixels;
+}
+
+void rotate(char *path, char *newPath, int mode) 
+{
+    FILE *pic = fopen(path, "rb");
+
+    // validation step 
+    if (!pic) 
+    {
+        printf("Cannot open input file.\n");
+        return;
+    }
+    // another validation step 
+    FILE *out = fopen(newPath, "wb+");
+    if (!out) 
+    {
+        printf("Cannot open output file.\n");
+        fclose(pic);
+        return;
+    }
+
+    unsigned char header[54];
+    fread(header, sizeof(unsigned char), 54, pic);
+
+    int width = *(int*)&header[18];
+    int height = *(int*)&header[22];
+    int rowSize = (width * 3 + 3) & ~3;
+    int imageSize = rowSize * height;
+
+    unsigned char *pixels = malloc(imageSize);
+    fread(pixels, 1, imageSize, pic);
+    fclose(pic);
+
+    // using a case like approach depending on user input we will get in int main //
+    if (mode == 0) 
+    {
+        // Just copy
+        fwrite(header, sizeof(unsigned char), 54, out);
+        fwrite(pixels, 1, imageSize, out);
+
+    } else if (mode >= 1 && mode <= 3) 
+    {
+        // rotate depedning on amount of calls
+        int times = mode;  
+        for (int i = 0; i < times; i++) 
+        {
+            pixels = rotate90(pixels, &width, &height, &rowSize);
+        }
+
+        int newImageSize = rowSize * height;
+        *(int*)&header[18] = width;
+        *(int*)&header[22] = height;
+        *(int*)&header[34] = newImageSize;
+        *(int*)&header[2]  = 54 + newImageSize;
+
+        fwrite(header, sizeof(unsigned char), 54, out); // write header into output
+        fwrite(pixels, 1, newImageSize, out);           // actual data for output
+
+    } else if (mode == 4) 
+    {
+        // Mirror left to right
+        fwrite(header, sizeof(unsigned char), 54, out);
+        unsigned char *row = malloc(rowSize);
+
+        for (int j = 0; j < height; j++) 
+        {
+            // copy row into buff
+            memcpy(row, &pixels[j * rowSize], rowSize);
+
+            for (int count = 0; count < width / 2; count++) 
+            {
+                for (int i = 0; i < 3; i++) 
+                {
+                    char temp = row[count * 3 + i];
+                    row[count * 3 + i] = row[(width - count - 1) * 3 + i];
+                    row[(width - count - 1) * 3 + i] = temp;
+                }
+            }
+
+            // wrote out modded picel data 
+            fwrite(row, 1, rowSize, out);
+        }
+
+        free(row);
+
+    } else if (mode == 5) 
+    {
+        // Flip upside down
+        fwrite(header, sizeof(unsigned char), 54, out);
+        for (int y = height - 1; y >= 0; y--) 
+        {
+            fwrite(&pixels[y * rowSize], 1, rowSize, out);
+        }
+
+    } else if (mode == 6) 
+    {
+        // Shrink by 50%
+        int newW = width / 2;
+        int newH = height / 2;
+        int newRowSize = (newW * 3 + 3) & ~3;
+        int newImageSize = newRowSize * newH;
+        unsigned char *shrunkPixels = calloc(1, newImageSize);
+
+        for (int y = 0; y < newH; y++) 
+        {
+            for (int x = 0; x < newW; x++) 
+            {
+                // sample every other pixel (nearest neighbor)
+                int sourceCol = x * 2;
+                int sourceRow = y * 2;
+                int sourceIndex = sourceRow * rowSize + sourceCol * 3;
+                int destinationIndex = y * newRowSize + x * 3;
+
+                memcpy(&shrunkPixels[destinationIndex], &pixels[sourceIndex], 3);
+            }
+        }
+
+        // sets header dta
+        *(int*)&header[18] = newW;
+        *(int*)&header[22] = newH;
+        *(int*)&header[34] = newImageSize;
+        *(int*)&header[2]  = 54 + newImageSize;
+
+        fwrite(header, sizeof(unsigned char), 54, out);
+        fwrite(shrunkPixels, 1, newImageSize, out);
+        free(shrunkPixels);
+    }
+
+    free(pixels);
+    fclose(out);
+    printf("Done. Saved to: %s\n", newPath);
+}
+
+int main() 
+{
+    int mode; // to get choice from the user
+
+    // formatting best i can 
+    printf("=== BMP Image Transformer ===\n");
+    printf("Choose a transformation mode:\n");
+    printf("  0 = Copy image\n");
+    printf("  1 = Rotate 90 degrees clockwise\n");
+    printf("  2 = Rotate 180 degrees\n");
+    printf("  3 = Rotate 270 degrees\n");
+    printf("  4 = Mirror (left to right)\n");
+    printf("  5 = Flip upside down\n");
+    printf("  6 = Shrink image by 50%%\n\n> ");
+
+    scanf("%d", &mode);
+
+    // just more validation 
+    if (mode < 0 || mode > 6) 
+    {
+        printf("Invalid mode selected.\n");
+        return 1;
+    }
+
+    // call func and then output to new file, or exissting if it alread exists
+    rotate("darthvador.bmp", "output.bmp", mode);
+    return 0;
+}
